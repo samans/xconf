@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>xconf — multi-protocol YANG client</title>
+<style>
+  :root { --bg:#0f1419; --panel:#1b2430; --accent:#4fc3f7; --ok:#66bb6a; --err:#ef5350; --text:#e3e8ee; --muted:#8a99ad; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+         background:var(--bg); color:var(--text); }
+  header { padding:20px 24px; border-bottom:1px solid #263241; }
+  header h1 { margin:0; font-size:20px; }
+  header p { margin:4px 0 0; color:var(--muted); font-size:13px; }
+  .shared { display:flex; gap:12px; align-items:center; padding:16px 24px; flex-wrap:wrap;
+            background:#121922; border-bottom:1px solid #263241; }
+  .shared label { color:var(--muted); font-size:13px; }
+  .shared input { background:#0b1118; color:var(--text); border:1px solid #33455a; border-radius:6px;
+                  padding:8px 10px; font-size:14px; min-width:220px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:16px; padding:24px; }
+  .card { background:var(--panel); border:1px solid #263241; border-radius:10px; padding:16px; }
+  .card h2 { margin:0 0 4px; font-size:16px; color:var(--accent); }
+  .card .meta { color:var(--muted); font-size:12px; margin-bottom:12px; }
+  .btns { display:flex; gap:8px; flex-wrap:wrap; }
+  button { cursor:pointer; border:none; border-radius:6px; padding:8px 14px; font-size:13px; font-weight:600;
+           background:#2a3a4d; color:var(--text); }
+  button:hover { background:#34506b; }
+  button.get { background:#2d4d63; }
+  button.set { background:#2f5e3f; }
+  button.reset { background:#5e3230; }
+  .out { margin-top:12px; background:#0b1118; border:1px solid #223042; border-radius:6px; padding:10px;
+         font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; white-space:pre-wrap;
+         max-height:280px; overflow:auto; }
+  .status { font-weight:700; }
+  .status.ok { color:var(--ok); }
+  .status.err { color:var(--err); }
+  footer { padding:12px 24px; color:var(--muted); font-size:12px; border-top:1px solid #263241; }
+  code { color:var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>xconf — one client, three servers</h1>
+  <p>Drive NETCONF, RESTCONF, and CORECONF against the shared <code>example</code> YANG module
+     (<code>container system { leaf hostname; }</code>).</p>
+</header>
+
+<div class="shared">
+  <label for="hostname">hostname value for SET:</label>
+  <input id="hostname" type="text" value="router-1" />
+</div>
+
+<div class="grid" id="grid"></div>
+
+<footer>
+  Each card calls the unified client backend, which speaks the native protocol to that server.
+  SET uses the hostname field above. RESET restores the YANG default <code>default-host</code>.
+</footer>
+
+<script>
+const SERVERS = [
+  { id: "netconf",  name: "NETCONF",  meta: "plain TCP :8300 · XML · NETCONF 1.0 framing" },
+  { id: "restconf", name: "RESTCONF", meta: "HTTP :8400 · JSON · /restconf/data" },
+  { id: "coreconf", name: "CORECONF", meta: "CoAP :5683 · CBOR · SID-keyed /c" },
+];
+
+const grid = document.getElementById("grid");
+
+for (const s of SERVERS) {
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `
+    <h2>${s.name}</h2>
+    <div class="meta">${s.meta}</div>
+    <div class="btns">
+      <button class="get"   data-p="${s.id}" data-a="get">GET</button>
+      <button class="set"   data-p="${s.id}" data-a="set">SET</button>
+      <button class="reset" data-p="${s.id}" data-a="reset">RESET</button>
+    </div>
+    <div class="out" id="out-${s.id}">ready.</div>
+  `;
+  grid.appendChild(card);
+}
+
+grid.addEventListener("click", async (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  const protocol = btn.dataset.p;
+  const action = btn.dataset.a;
+  const hostname = document.getElementById("hostname").value;
+  const out = document.getElementById("out-" + protocol);
+  out.textContent = `${action.toUpperCase()}… sending to ${protocol}`;
+
+  try {
+    const res = await fetch("/api/command", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ protocol, action, hostname }),
+    });
+    const data = await res.json();
+    const ok = data.ok;
+    const head = `<span class="status ${ok ? "ok" : "err"}">${ok ? "OK" : "ERROR"}</span> ${action} @ ${protocol}\n`;
+    out.innerHTML = head + escapeHtml(JSON.stringify(data.result ?? data.error, null, 2));
+  } catch (err) {
+    out.innerHTML = `<span class="status err">ERROR</span>\n` + escapeHtml(String(err));
+  }
+});
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;" }[c]));
+}
+</script>
+</body>
+</html>
