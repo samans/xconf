@@ -68,6 +68,79 @@ docker run --rm -p 8080:8080 xconf:latest
 See **`DOCKER.md`** for publishing the protocol ports, persisting state,
 and sharing the image (tar file, Docker Hub, or ghcr.io).
 
+## Run on native Windows 11 (no WSL2, no Docker)
+
+The Python code is cross-platform, but the `run.py` launcher uses Unix
+process-group calls. For native Windows there is an equivalent PowerShell
+launcher, **`run.ps1`** (with a `run.cmd` wrapper for `cmd.exe`), that
+mirrors the same verbs:
+
+### Prerequisites
+
+- **Python 3.10 or newer** (3.11 / 3.12 recommended), 64-bit. Install from
+  [python.org](https://www.python.org/downloads/windows/) or the Microsoft
+  Store. During the python.org install, tick **"Add python.exe to PATH"**.
+  Verify in a new PowerShell:
+
+  ```powershell
+  python --version        # or:  py -3 --version
+  pip --version
+  ```
+
+- **pip** (bundled with the python.org installer).
+- **PowerShell 5.1** (built into Windows 11) or PowerShell 7+. No other
+  runtime is required — no WSL, no Docker, no C/C++ build tools (all four
+  dependencies ship as pre-built Windows wheels).
+
+Then install the Python dependencies once:
+
+```powershell
+pip install -r requirements.txt
+```
+
+### Start / stop / status / reset
+
+```powershell
+.\run.ps1 start all        # netconf, restconf, coreconf, client
+.\run.ps1 start client     # just one component
+.\run.ps1 status
+.\run.ps1 stop all
+.\run.ps1 reset all
+```
+
+Or from `cmd.exe` (or by double-clicking), which sidesteps the execution
+policy:
+
+```bat
+run.cmd start all
+run.cmd status
+run.cmd stop all
+```
+
+If PowerShell blocks the script, allow it for the current shell only:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
+
+Notes for Windows:
+
+- Each component runs as a hidden background process; its PID is written
+  to `state\pids\<name>.pid` and output to `state\logs\<name>.log` (plus
+  `<name>.log.err` for stderr, since Windows keeps the two streams in
+  separate files).
+- `stop` uses `taskkill /PID <pid> /T /F`; `status` checks each PID with
+  `Get-Process`.
+- `reset` delegates to `python run.py reset`, whose datastore logic is
+  pure, cross-platform Python.
+- You can always skip the launcher and run the four components in four
+  separate PowerShell windows:
+  `python servers\netconf_server.py`, `...restconf_server.py`,
+  `...coreconf_server.py`, `python client\web.py`.
+
+See **`WINDOWS.md`** for the full native-Windows guide, including how to
+package the project for someone who has no WSL and no Docker.
+
 ## Startup
 
 Start everything (servers + client), or start a single component:

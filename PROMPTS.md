@@ -179,6 +179,44 @@ Deliverables: `Dockerfile`, `docker-entrypoint.sh`, `.dockerignore`,
 > After adding the Docker packaging, update this prompts file to include
 > the new step.
 
+---
+
+## 15. Native Windows 11 launcher (no WSL2)
+
+> Make the lab runnable on native Windows 11 without WSL2. The Python code
+> is already cross-platform; the only blocker is the `run.py` launcher,
+> which uses Unix process-group calls (`os.killpg` / `os.getpgid` /
+> `start_new_session` / `SIGTERM`). Provide the Windows launcher as
+> **separate PowerShell script files** (not platform branches inside
+> `run.py`): a `run.ps1` that mirrors the same verbs
+> (`start` / `stop` / `status` / `reset`) and targets, using
+> `Start-Process` for hidden background processes, PID files under
+> `state\pids\`, `taskkill /PID /T /F` to stop, and `Get-Process` for
+> status; delegate `reset` to `python run.py reset` (pure, cross-platform
+> Python). Add a `run.cmd` wrapper so it works from `cmd.exe` without
+> changing the execution policy. Then document a "Run on native Windows"
+> section in the README.
+
+Deliverables: `run.ps1`, `run.cmd`, README update. (`run.py` is left
+unchanged as the Unix/macOS launcher.)
+
+---
+
+## 16. Document Windows prerequisites and offline packaging
+
+> Document the prerequisites needed to run natively on Windows via the
+> PowerShell scripts (Python version, pip, PowerShell, no build tools),
+> and explain how to package the project to share with someone whose
+> Windows 11 machine has **no WSL** — i.e. ship source, not the Docker
+> image. Cover both a plain source zip (recipient installs Python + runs
+> `pip install`) and a fully offline bundle using `pip download
+> --only-binary=:all: --platform win_amd64 --python-version 312` into a
+> `vendor\` folder plus `pip install --no-index --find-links .\vendor`.
+> Put this in a dedicated `WINDOWS.md`, add a Windows prerequisites block
+> to the README, and link to it.
+
+Deliverables: `WINDOWS.md`, README prerequisites block + link.
+
 ## Notes for reproduction
 
 - **Stack**: Python 3.12, `flask`, `requests`, `cbor2`, `aiocoap`.
@@ -196,3 +234,7 @@ Deliverables: `Dockerfile`, `docker-entrypoint.sh`, `.dockerignore`,
   xconf . && docker run --rm -p 8080:8080 xconf`); see `DOCKER.md`. The
   web UI reads `XCONF_WEB_HOST` (default `127.0.0.1`, set to `0.0.0.0` in
   the image) so the published port is reachable from the host.
+- **Windows**: `run.py` is the Unix/macOS launcher; `run.ps1` (+ `run.cmd`
+  wrapper) is the native-Windows equivalent. Both write PID files to
+  `state\pids\` and logs to `state\logs\`, and expose the same
+  `start`/`stop`/`status`/`reset` verbs.
