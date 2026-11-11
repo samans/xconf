@@ -123,9 +123,12 @@ sysrepo, or **jetconf**) over the shared datastore.
 
 ## 3. Full CORECONF with SID files (RFC 9254 + RFC 9595)
 
-Current lab: aiocoap server, hand-assigned SIDs (1700/1701), GET/PUT/POST
-on `/c` and `/c/<sid>`, CBOR with name/text values, no FETCH/iPATCH, no
-`.well-known/core`, no DTLS/OSCORE.
+Current lab: aiocoap server, hand-assigned SIDs (1700/1701/1702), the
+`system` node is now a keyed **list** encoded as a CBOR map keyed by the
+instance name (`{1700: {"<name>": {1702: name, 1701: hostname}}}`) with
+GET/POST on `/c/`, GET/PUT/DELETE on `/c/<name>`, POST on `/c/reset`. No
+FETCH/iPATCH, no proper CBOR list encoding, no `.well-known/core`, no
+DTLS/OSCORE.
 
 To be compliant:
 
@@ -136,6 +139,11 @@ To be compliant:
   `.sid` JSON alongside the module. No more hand-picked integers.
   - SIDs in payloads are typically **delta-encoded** relative to the parent
     (RFC 9254 §3.2) — the lab uses absolute SIDs.
+- **Proper YANG list encoding (RFC 9254).** A keyed list is encoded as a
+  **CBOR array of maps**, each map carrying the key leaf(s) and other
+  nodes by (delta) SID — not the name-keyed CBOR map shortcut this lab
+  uses. List instances are addressed by their key values per the CoMI
+  rules, not by a bare name path segment.
 - **CBOR encoding rules (RFC 9254).** Full type mapping: deltas for keys,
   correct encoding of `identityref` (as SIDs), `instance-identifier`,
   `bits`, `decimal64`, `union`, `anydata`; and the

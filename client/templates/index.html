@@ -5,110 +5,314 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>xconf — multi-protocol YANG client</title>
 <style>
-  :root { --bg:#0f1419; --panel:#1b2430; --accent:#4fc3f7; --ok:#66bb6a; --err:#ef5350; --text:#e3e8ee; --muted:#8a99ad; }
+  :root { --bg:#0f1419; --panel:#1b2430; --accent:#4fc3f7; --ok:#66bb6a; --err:#ef5350;
+          --text:#e3e8ee; --muted:#8a99ad; --line:#263241; }
   * { box-sizing: border-box; }
   body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
          background:var(--bg); color:var(--text); }
-  header { padding:20px 24px; border-bottom:1px solid #263241; }
+  header { padding:20px 24px; border-bottom:1px solid var(--line); }
   header h1 { margin:0; font-size:20px; }
   header p { margin:4px 0 0; color:var(--muted); font-size:13px; }
-  .shared { display:flex; gap:12px; align-items:center; padding:16px 24px; flex-wrap:wrap;
-            background:#121922; border-bottom:1px solid #263241; }
-  .shared label { color:var(--muted); font-size:13px; }
-  .shared input { background:#0b1118; color:var(--text); border:1px solid #33455a; border-radius:6px;
-                  padding:8px 10px; font-size:14px; min-width:220px; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:16px; padding:24px; }
-  .card { background:var(--panel); border:1px solid #263241; border-radius:10px; padding:16px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(360px, 1fr)); gap:16px; padding:24px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px; }
   .card h2 { margin:0 0 4px; font-size:16px; color:var(--accent); }
-  .card .meta { color:var(--muted); font-size:12px; margin-bottom:12px; }
-  .btns { display:flex; gap:8px; flex-wrap:wrap; }
-  button { cursor:pointer; border:none; border-radius:6px; padding:8px 14px; font-size:13px; font-weight:600;
+  .card .meta { color:var(--muted); font-size:12px; margin-bottom:14px; }
+  .form-row { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; }
+  .form-row label { color:var(--muted); font-size:12px; }
+  select, input { background:#0b1118; color:var(--text); border:1px solid #33455a; border-radius:6px;
+                  padding:8px 10px; font-size:14px; width:100%; }
+  .btns { display:flex; gap:8px; flex-wrap:wrap; margin-top:4px; }
+  button { cursor:pointer; border:none; border-radius:6px; padding:8px 12px; font-size:13px; font-weight:600;
            background:#2a3a4d; color:var(--text); }
-  button:hover { background:#34506b; }
-  button.get { background:#2d4d63; }
-  button.set { background:#2f5e3f; }
-  button.reset { background:#5e3230; }
+  button:hover { filter:brightness(1.15); }
+  button.getall { background:#2d4d63; }
+  button.add    { background:#2f5e3f; }
+  button.remove { background:#5e3230; }
+  button.set    { background:#3a4a7a; }
+  button.reset  { background:#5a4a24; }
   .out { margin-top:12px; background:#0b1118; border:1px solid #223042; border-radius:6px; padding:10px;
          font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; white-space:pre-wrap;
-         max-height:280px; overflow:auto; }
+         max-height:300px; overflow:auto; }
   .status { font-weight:700; }
   .status.ok { color:var(--ok); }
   .status.err { color:var(--err); }
-  footer { padding:12px 24px; color:var(--muted); font-size:12px; border-top:1px solid #263241; }
+  /* Result window colour coding: command / sent / received. */
+  .block { margin-top:8px; padding:6px 8px; border-left:3px solid var(--line); border-radius:3px; }
+  .block .tag { display:inline-block; font-weight:700; font-size:11px; letter-spacing:0.06em;
+                text-transform:uppercase; margin-bottom:3px; }
+  .block .body { white-space:pre-wrap; }
+  .block.cmd  { background:rgba(79,195,247,0.08);  border-left-color:var(--accent); }
+  .block.cmd  .tag  { color:var(--accent); }
+  .block.sent { background:rgba(255,183,77,0.08);  border-left-color:#ffb74d; }
+  .block.sent .tag  { color:#ffb74d; }
+  .block.sent .body { color:#ffd699; }
+  .block.recv { background:rgba(102,187,106,0.08); border-left-color:var(--ok); }
+  .block.recv .tag  { color:var(--ok); }
+  .block.recv.err   { background:rgba(239,83,80,0.08); border-left-color:var(--err); }
+  .block.recv.err .tag { color:var(--err); }
+  .block.stats { background:rgba(186,104,200,0.08); border-left-color:#ba68c8; }
+  .block.stats .tag  { color:#ce93d8; }
+  .block.stats .body { color:#d7bde8; }
+  footer { padding:12px 24px; color:var(--muted); font-size:12px; border-top:1px solid var(--line); }
   code { color:var(--accent); }
 </style>
 </head>
 <body>
 <header>
   <h1>xconf — one client, three servers</h1>
-  <p>Drive NETCONF, RESTCONF, and CORECONF against the shared <code>example</code> YANG module
-     (<code>container system { leaf hostname; }</code>).</p>
+  <p>Manage a keyed list of <code>example:system</code> instances
+     (<code>list system { key name; leaf hostname; }</code>) over NETCONF, RESTCONF, and CORECONF.</p>
 </header>
-
-<div class="shared">
-  <label for="hostname">hostname value for SET:</label>
-  <input id="hostname" type="text" value="router-1" />
-</div>
 
 <div class="grid" id="grid"></div>
 
 <footer>
-  Each card calls the unified client backend, which speaks the native protocol to that server.
-  SET uses the hostname field above. RESET restores the YANG default <code>default-host</code>.
+  Pick an instance from the dropdown, then SET its hostname. ADD creates a new instance
+  (name + hostname), REMOVE deletes the selected one, and GET ALL lists every instance on that server.
+  RESET restores the datastore to a single <code>default</code> instance.
+  <div style="margin-top:8px;">
+    Result window legend:
+    <span style="color:var(--accent);font-weight:700;">■ command</span> (what you asked) ·
+    <span style="color:#ffb74d;font-weight:700;">■ sent</span> (wire request) ·
+    <span style="color:var(--ok);font-weight:700;">■ received</span> (server response;
+    <span style="color:var(--err);font-weight:700;">red</span> on error).
+  </div>
 </footer>
+
+<template id="card-template">
+  <div class="card">
+    <h2></h2>
+    <div class="meta"></div>
+
+    <div class="form-row">
+      <label>instance (select to modify / remove)</label>
+      <select class="sel-instance"><option value="">— none loaded; click GET ALL —</option></select>
+    </div>
+
+    <div class="form-row">
+      <label>instance name (key — used by ADD)</label>
+      <input class="in-name" type="text" placeholder="e.g. sys1" />
+    </div>
+
+    <div class="form-row">
+      <label>hostname value (used by ADD and SET)</label>
+      <input class="in-host" type="text" placeholder="e.g. router-1" value="router-1" />
+    </div>
+
+    <div class="btns">
+      <button class="getall" data-a="get_all">GET ALL</button>
+      <button class="add"    data-a="add">ADD INSTANCE</button>
+      <button class="remove" data-a="remove">REMOVE INSTANCE</button>
+      <button class="set"    data-a="set">SET HOSTNAME</button>
+      <button class="reset"  data-a="reset">RESET</button>
+    </div>
+
+    <div class="out">ready.</div>
+  </div>
+</template>
 
 <script>
 const SERVERS = [
   { id: "netconf",  name: "NETCONF",  meta: "plain TCP :8300 · XML · NETCONF 1.0 framing" },
-  { id: "restconf", name: "RESTCONF", meta: "HTTP :8400 · JSON · /restconf/data" },
+  { id: "restconf", name: "RESTCONF", meta: "HTTP :8400 · JSON · /restconf/data/example:system" },
   { id: "coreconf", name: "CORECONF", meta: "CoAP :5683 · CBOR · SID-keyed /c" },
 ];
 
 const grid = document.getElementById("grid");
+const tmpl = document.getElementById("card-template");
 
 for (const s of SERVERS) {
-  const card = document.createElement("div");
-  card.className = "card";
-  card.innerHTML = `
-    <h2>${s.name}</h2>
-    <div class="meta">${s.meta}</div>
-    <div class="btns">
-      <button class="get"   data-p="${s.id}" data-a="get">GET</button>
-      <button class="set"   data-p="${s.id}" data-a="set">SET</button>
-      <button class="reset" data-p="${s.id}" data-a="reset">RESET</button>
-    </div>
-    <div class="out" id="out-${s.id}">ready.</div>
-  `;
-  grid.appendChild(card);
+  const node = tmpl.content.cloneNode(true);
+  const card = node.querySelector(".card");
+  card.dataset.proto = s.id;
+  card.querySelector("h2").textContent = s.name;
+  card.querySelector(".meta").textContent = s.meta;
+  grid.appendChild(node);
 }
+
+// When an instance is selected from the dropdown, populate the name and
+// hostname fields from that instance so the user can see/edit its values.
+grid.addEventListener("change", (e) => {
+  const sel = e.target.closest(".sel-instance");
+  if (sel) syncFields(sel);
+});
 
 grid.addEventListener("click", async (e) => {
   const btn = e.target.closest("button");
   if (!btn) return;
-  const protocol = btn.dataset.p;
+  const card = btn.closest(".card");
+  const protocol = card.dataset.proto;
   const action = btn.dataset.a;
-  const hostname = document.getElementById("hostname").value;
-  const out = document.getElementById("out-" + protocol);
-  out.textContent = `${action.toUpperCase()}… sending to ${protocol}`;
 
+  const sel  = card.querySelector(".sel-instance");
+  const inName = card.querySelector(".in-name");
+  const inHost = card.querySelector(".in-host");
+  const out  = card.querySelector(".out");
+
+  // ADD and SET use the name field as the instance key; REMOVE uses the
+  // dropdown selection (so you delete exactly what you picked).
+  let name = "";
+  if (action === "add" || action === "set") {
+    name = inName.value.trim();
+    if (!name) { flash(out, "ERROR", `enter an instance name for ${action.toUpperCase()}`); return; }
+    // ADD must not target an instance that already exists. The dropdown
+    // reflects the current instances (from GET ALL), so check it first for
+    // immediate feedback; the server enforces this authoritatively too.
+    if (action === "add" && instanceExists(sel, name)) {
+      flash(out, "ERROR", `instance "${name}" already exists — use SET to change it, or pick a new name`);
+      return;
+    }
+  } else if (action === "remove") {
+    name = sel.value || inName.value.trim();
+    if (!name) { flash(out, "ERROR", "select an instance to remove (or type its name)"); return; }
+  }
+  const hostname = inHost.value;
+
+  out.textContent = `${action.toUpperCase()}… sending to ${protocol}`;
   try {
     const res = await fetch("/api/command", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ protocol, action, hostname }),
+      body: JSON.stringify({ protocol, action, name, hostname }),
     });
     const data = await res.json();
     const ok = data.ok;
-    const head = `<span class="status ${ok ? "ok" : "err"}">${ok ? "OK" : "ERROR"}</span> ${action} @ ${protocol}\n`;
-    out.innerHTML = head + escapeHtml(JSON.stringify(data.result ?? data.error, null, 2));
+    const result = data.result ?? {};
+
+    // Build three colour-coded sections: the command issued, the message
+    // sent on the wire, and the response received from the server.
+    const cmdText = `${action.toUpperCase()}  @  ${protocol}` +
+      (name ? `   instance="${name}"` : "") +
+      ((action === "add" || action === "set") ? `   hostname="${hostname}"` : "");
+
+    const sentText = result._request || "(no request captured)";
+
+    // "Received" is everything the result carries except the echoed request
+    // and the byte-size fields (those get their own stats block below).
+    let recvObj;
+    if (data.ok) {
+      recvObj = { ...result };
+      for (const k of ["_request", "_sent_payload", "_sent_headers",
+                       "_recv_payload", "_recv_headers"]) delete recvObj[k];
+    } else {
+      recvObj = data.error ?? result;
+    }
+    const recvText = typeof recvObj === "string"
+      ? recvObj
+      : JSON.stringify(recvObj, null, 2);
+
+    // Wire-size statistics, split into payload (data) and headers/framing.
+    const sp = result._sent_payload, sh = result._sent_headers;
+    const rp = result._recv_payload, rh = result._recv_headers;
+    let statsText = "(not measured)";
+    if ([sp, sh, rp, rh].every(v => typeof v === "number")) {
+      const sentTotal = sp + sh, recvTotal = rp + rh, grand = sentTotal + recvTotal;
+      statsText =
+        `                  payload   headers   total\n` +
+        `sent to wire   :  ${col(sp)}${col(sh)}${col(sentTotal)}\n` +
+        `recv from wire :  ${col(rp)}${col(rh)}${col(recvTotal)}\n` +
+        `               :  ----------------------------\n` +
+        `total exchanged:  ${col(sp + rp)}${col(sh + rh)}${col(grand)}`;
+    }
+
+    out.innerHTML =
+      block("cmd",  "command",  cmdText) +
+      block("sent", "sent",     sentText) +
+      block(ok ? "recv" : "recv err", ok ? "received ✓" : "received ✗", recvText) +
+      block("stats", "wire statistics (bytes)", statsText);
+
+    // Keep the dropdown in sync: refresh after any state change, and
+    // populate it directly from a GET ALL result.
+    if (action === "get_all" && ok) {
+      populate(sel, data.result.instances || []);
+    } else if (ok && action === "add") {
+      // Move the form to the newly added instance.
+      await refresh(protocol, sel, name);
+    } else if (ok && (action === "remove" || action === "reset")) {
+      await refresh(protocol, sel);
+    }
   } catch (err) {
-    out.innerHTML = `<span class="status err">ERROR</span>\n` + escapeHtml(String(err));
+    flash(out, "ERROR", String(err));
   }
 });
+
+// Render one labelled, colour-coded section of the result window.
+function block(cls, tag, text) {
+  return `<div class="block ${cls}"><span class="tag">${tag}</span>` +
+         `<div class="body">${escapeHtml(text)}</div></div>`;
+}
+
+function populate(sel, instances, selectName) {
+  const previous = sel.value;
+  sel.innerHTML = "";
+  if (!instances.length) {
+    sel.innerHTML = '<option value="">— no instances —</option>';
+    return;
+  }
+  for (const inst of instances) {
+    const opt = document.createElement("option");
+    opt.value = inst.name;
+    opt.dataset.hostname = inst.hostname;
+    opt.textContent = `${inst.name}  (hostname = ${inst.hostname})`;
+    sel.appendChild(opt);
+  }
+  // Prefer an explicitly requested selection (e.g. a freshly added
+  // instance); otherwise preserve the previous selection if still present.
+  const want = selectName ?? previous;
+  if ([...sel.options].some(o => o.value === want)) sel.value = want;
+  // Sync the name/hostname fields to whatever is now selected.
+  syncFields(sel);
+}
+
+// Copy the selected instance's key + hostname into the editable fields.
+function syncFields(sel) {
+  const card = sel.closest(".card");
+  const opt = sel.selectedOptions[0];
+  if (!opt || !opt.value) return;
+  card.querySelector(".in-name").value = opt.value;
+  card.querySelector(".in-host").value = opt.dataset.hostname ?? "";
+}
+
+// True if `name` is already one of the dropdown's instance options.
+function instanceExists(sel, name) {
+  return [...sel.options].some(o => o.value === name);
+}
+
+async function refresh(protocol, sel, selectName) {
+  try {
+    const res = await fetch("/api/command", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ protocol, action: "get_all" }),
+    });
+    const data = await res.json();
+    if (data.ok) populate(sel, data.result.instances || [], selectName);
+  } catch (_) { /* ignore refresh errors */ }
+}
+
+function flash(out, status, msg) {
+  // Client-side notices (validation, fetch failures) — render as a single
+  // colour-coded block matching the result window styling.
+  const ok = status === "OK";
+  out.innerHTML = block(ok ? "recv" : "recv err", ok ? "notice" : "notice ✗", msg);
+}
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;" }[c]));
 }
+
+// Format a byte count into a fixed-width (10-char) column for the stats
+// table, e.g. 315 -> "315 B     ".
+function col(n) {
+  return `${n} B`.padEnd(10);
+}
+
+// Auto-load instances for every server on page load.
+window.addEventListener("DOMContentLoaded", () => {
+  for (const card of document.querySelectorAll(".card")) {
+    refresh(card.dataset.proto, card.querySelector(".sel-instance"));
+  }
+});
 </script>
 </body>
 </html>

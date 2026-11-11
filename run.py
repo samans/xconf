@@ -42,6 +42,9 @@ DATASTORES = {
 
 ORDER = ["netconf", "restconf", "coreconf", "client"]
 
+# Web control-panel URL (must match HOST/PORT in client/web.py).
+CLIENT_URL = "http://127.0.0.1:8080"
+
 
 def _pidfile(name: str) -> str:
     return os.path.join(PIDS, f"{name}.pid")
@@ -72,6 +75,8 @@ def start(name: str) -> None:
     existing = _read_pid(name)
     if existing and _is_running(existing):
         print(f"[{name}] already running (pid {existing})")
+        if name == "client":
+            print(f"[client] web interface: {CLIENT_URL}")
         return
     logf = open(os.path.join(LOGS, f"{name}.log"), "a")
     proc = subprocess.Popen(
@@ -83,6 +88,8 @@ def start(name: str) -> None:
     with open(_pidfile(name), "w") as fh:
         fh.write(str(proc.pid))
     print(f"[{name}] started (pid {proc.pid}), log: state/logs/{name}.log")
+    if name == "client":
+        print(f"[client] web interface: {CLIENT_URL}")
 
 
 def stop(name: str) -> None:

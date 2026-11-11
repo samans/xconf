@@ -15,8 +15,19 @@ It does NOT use SSH (the standard transport). Transport is plain TCP so
 the lab stays dependency-free. See FULL_IMPLEMENTATION.md for what a
 standards-compliant deployment requires.
 
-The datastore holds the `example` YANG module:
-    <system xmlns="urn:example:simple"><hostname>...</hostname></system>
+The datastore holds the `example` YANG module, a keyed list:
+    <system xmlns="urn:example:simple">
+      <name>sys1</name><hostname>router-1</hostname>
+    </system>
+    <system xmlns="urn:example:simple">
+      <name>sys2</name><hostname>router-2</hostname>
+    </system>
+
+edit-config conventions used by this lab:
+  * A <system> whose <name> carries operation="delete" (or "remove")
+    removes that instance.
+  * Any other <system> creates the instance if missing, or updates its
+    <hostname> if it already exists (merge semantics).
 """
 
 from __future__ import annotations
@@ -28,7 +39,7 @@ import xml.etree.ElementTree as ET
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from common.datastore import Datastore  # noqa: E402
+from common.datastore import Datastore, InstanceExists, InstanceNotFound  # noqa: E402
 
 HOST = "127.0.0.1"
 PORT = 8300
@@ -63,18 +74,23 @@ def _local(tag: str) -> str:
 
 
 def _config_xml() -> str:
-    """Render the current datastore as NETCONF <data> XML."""
-    hostname = datastore.get_hostname()
-    return (
-        f'<system xmlns="{NS_EXAMPLE}">'
-        f"<hostname>{_escape(hostname)}</hostname>"
-        f"</system>"
-    )
+    """Render the current datastore as NETCONF <data> XML (all instances)."""
+    data = datastore.get()
+    parts = []
+    for entry in data.get("example:system", []):
+        parts.append(
+            f'<system xmlns="{NS_EXAMPLE}">'
+            f"<name>{_escape(entry.get('name', ''))}</name>"
+            f"<hostname>{_escape(entry.get('hostname', ''))}</hostname>"
+            f"</system>"
+        )
+    return "".join(parts)
 
 
 def _escape(text: str) -> str:
     return (
-        text.replace("&", "&amp;")
+        str(text)
+        .replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
     )
@@ -110,7 +126,6 @@ def handle_rpc(rpc_xml: str) -> str:
         return _rpc_error("", f"malformed XML: {exc}", "malformed-message")
 
     message_id = root.attrib.get("message-id", "")
-    # The operation is the single child of <rpc>.
     op = None
     for child in root:
         op = child
@@ -124,7 +139,6 @@ def handle_rpc(rpc_xml: str) -> str:
         return _rpc_reply(message_id, f"<data>{_config_xml()}</data>")
 
     if name in ("lock", "unlock"):
-        # No real multi-session locking in this lab; acknowledge.
         return _rpc_reply(message_id, "<ok/>")
 
     if name in ("close-session", "kill-session"):
@@ -140,27 +154,87 @@ def handle_rpc(rpc_xml: str) -> str:
     return _rpc_error(message_id, f"unsupported operation: {name}", "operation-not-supported")
 
 
+def _elem_text(parent: ET.Element, child_local: str):
+    for elem in parent:
+        if _local(elem.tag) == child_local:
+            return elem
+    return None
+
+
 def _handle_edit_config(message_id: str, op: ET.Element) -> str:
-    """Apply an edit-config whose <config> carries example:system/hostname."""
-    # Find the hostname leaf anywhere under the operation.
-    hostname = None
-    for elem in op.iter():
-        if _local(elem.tag) == "hostname":
-            hostname = elem.text if elem.text is not None else ""
-            break
-    if hostname is None:
+    """Apply an edit-config carrying one or more <system> list entries.
+
+    The per-entry NETCONF 'operation' attribute (on the <system> element or
+    its <name> child) selects the semantics, per RFC 6241 section 7.2:
+
+      * create  -> the instance MUST NOT already exist (else data-exists).
+      * merge   -> create if absent, otherwise update the hostname (default
+                   when no operation attribute is present).
+      * replace -> same as merge for this single-leaf model.
+      * delete  -> the instance MUST exist (else data-missing).
+      * remove  -> delete if present; no error if absent.
+    """
+    systems = [elem for elem in op.iter() if _local(elem.tag) == "system"]
+    if not systems:
         return _rpc_error(
             message_id,
-            "edit-config did not contain example:system/hostname",
+            "edit-config did not contain any example:system entry",
             "missing-element",
         )
-    datastore.set_hostname(hostname)
+
+    for system in systems:
+        name_elem = _elem_text(system, "name")
+        host_elem = _elem_text(system, "hostname")
+        if name_elem is None or not (name_elem.text or "").strip():
+            return _rpc_error(message_id, "system entry missing key 'name'", "missing-element")
+        key = name_elem.text.strip()
+        hostname = (
+            host_elem.text if host_elem is not None and host_elem.text is not None else None
+        )
+
+        op_attr = (_operation_attr(system) or _operation_attr(name_elem) or "merge")
+
+        if op_attr in ("delete", "remove"):
+            try:
+                datastore.remove_instance(key)
+            except InstanceNotFound:
+                if op_attr == "delete":
+                    return _rpc_error(
+                        message_id, f"instance '{key}' does not exist", "data-missing"
+                    )
+            continue
+
+        if op_attr == "create":
+            try:
+                datastore.add_instance(key, hostname)
+            except InstanceExists:
+                return _rpc_error(
+                    message_id,
+                    f"instance '{key}' already exists",
+                    "data-exists",
+                )
+            continue
+
+        # merge / replace: create if absent, update hostname if present.
+        try:
+            datastore.add_instance(key, hostname)
+        except InstanceExists:
+            if hostname is not None:
+                datastore.set_hostname(key, hostname)
+
     return _rpc_reply(message_id, "<ok/>")
+
+
+def _operation_attr(elem: ET.Element):
+    """Return the NETCONF 'operation' attribute value, namespace-agnostic."""
+    for attr, value in elem.attrib.items():
+        if _local(attr) == "operation":
+            return value
+    return None
 
 
 class NetconfHandler(socketserver.StreamRequestHandler):
     def handle(self) -> None:
-        # 1. Send our hello immediately.
         self._send(SERVER_HELLO)
         buffer = b""
         hello_consumed = False
@@ -175,7 +249,6 @@ class NetconfHandler(socketserver.StreamRequestHandler):
                 if not text:
                     continue
                 if not hello_consumed and "<hello" in text:
-                    # Client hello; nothing to reply.
                     hello_consumed = True
                     continue
                 reply = handle_rpc(text)

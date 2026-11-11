@@ -5,20 +5,32 @@ module example {
 
   organization "xconf lab";
   description
-    "Minimal YANG module for multi-protocol testing: one container
-     holding a single configurable leaf.";
+    "Minimal YANG module for multi-protocol testing: a keyed list of
+     'system' instances, each holding a single configurable leaf.";
 
+  revision 2026-11-11 {
+    description
+      "Converted the singleton 'system' container into a keyed list so
+       the lab can create, select, modify, and remove multiple
+       instances.";
+  }
   revision 2026-11-10 {
     description "Initial revision for the xconf multi-protocol lab.";
   }
 
-  container system {
-    description "Top-level configuration container.";
+  list system {
+    key "name";
+    description "A list of configurable system instances, keyed by name.";
+
+    leaf name {
+      type string;
+      description "The instance key.";
+    }
 
     leaf hostname {
       type string;
       default "default-host";
-      description "The configured hostname of the device.";
+      description "The configured hostname of this system instance.";
     }
   }
 }

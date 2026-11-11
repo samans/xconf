@@ -1,0 +1,18 @@
+# Python bytecode — regenerated on import
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Runtime state: datastores, logs, pid files — recreated by run.py / the
+# servers on first run (see common/datastore.py).
+state/
+
+# Common local/editor cruft
+.venv/
+venv/
+env/
+.env
+*.log
+.DS_Store
+.idea/
+.vscode/

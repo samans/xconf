@@ -1,0 +1,16 @@
+# Keep generated and local files out of the image build context.
+__pycache__/
+*.py[cod]
+state/
+.git/
+.gitignore
+.venv/
+venv/
+env/
+*.log
+.DS_Store
+.idea/
+.vscode/
+# Docs aren't needed at runtime, but they're tiny and harmless; keep them
+# so `docker run` users still have README/etc. inside the image. Exclude
+# nothing else.
